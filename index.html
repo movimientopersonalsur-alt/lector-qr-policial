@@ -1,0 +1,205 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lector QR - Policía Boliviana</title>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f1f4f8;
+      color: #102b4e;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .contenedor {
+      max-width: 480px;
+      margin: 25px auto;
+      padding: 22px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 3px 15px rgba(0,0,0,.12);
+    }
+
+    h2 {
+      font-size: 21px;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 12px;
+      border: 0;
+      border-radius: 7px;
+      background: #102b4e;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: .5;
+    }
+
+    #lectorQR {
+      width: 100%;
+      margin-top: 18px;
+    }
+
+    #mensaje {
+      margin-top: 18px;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+
+    .secundario {
+      background: #667085;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="contenedor">
+
+  <h2>POLICÍA BOLIVIANA</h2>
+  <h3>COMANDO POLICIAL DE LA ZONA SUD</h3>
+
+  <p>LECTOR QR DE IDENTIFICACIÓN POLICIAL</p>
+
+  <div id="lectorQR"></div>
+
+  <button id="iniciarCamara">
+    ABRIR CÁMARA
+  </button>
+
+  <button id="cerrarCamara" class="secundario" hidden>
+    CERRAR CÁMARA
+  </button>
+
+  <div id="mensaje">
+    Presione ABRIR CÁMARA para escanear la credencial.
+  </div>
+
+</div>
+
+<script>
+  let lector = null;
+  let camaraActiva = false;
+  let codigoProcesado = false;
+
+  const mensaje = document.getElementById('mensaje');
+  const botonAbrir = document.getElementById('iniciarCamara');
+  const botonCerrar = document.getElementById('cerrarCamara');
+
+  async function detenerCamara() {
+
+    if (lector && camaraActiva) {
+      try {
+        await lector.stop();
+        lector.clear();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    lector = null;
+    camaraActiva = false;
+
+    botonAbrir.disabled = false;
+    botonCerrar.hidden = true;
+  }
+
+  botonAbrir.addEventListener('click', async function() {
+
+    if (typeof Html5Qrcode === 'undefined') {
+      mensaje.textContent = 'No se pudo cargar el lector QR. Verifique internet.';
+      return;
+    }
+
+    botonAbrir.disabled = true;
+    mensaje.textContent = 'Solicitando acceso a la cámara...';
+
+    try {
+
+      lector = new Html5Qrcode('lectorQR');
+
+      await lector.start(
+        { facingMode: 'environment' },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 }
+        },
+
+        async function(codigo) {
+
+          if (codigoProcesado) return;
+          codigoProcesado = true;
+
+          mensaje.textContent = 'Código QR leído correctamente.';
+
+          await detenerCamara();
+
+          const identificador = codigo.trim();
+
+          if (window.opener && !window.opener.closed) {
+
+            window.opener.postMessage({
+              tipo: 'QR_POLICIAL_LEIDO',
+              identificador: identificador
+            }, '*');
+
+            mensaje.textContent =
+              'Identificación enviada al sistema policial.';
+
+            setTimeout(function() {
+              window.close();
+            }, 1200);
+
+          } else {
+
+            mensaje.textContent =
+              'Código leído: ' + identificador +
+              '. Puede cerrar esta ventana.';
+
+          }
+
+        },
+
+        function(errorLectura) {
+          // Errores normales mientras se busca un código QR.
+        }
+      );
+
+      camaraActiva = true;
+      botonCerrar.hidden = false;
+      mensaje.textContent = 'Cámara activa. Enfoque el código QR.';
+
+    } catch (error) {
+
+      mensaje.textContent =
+        'No se pudo abrir la cámara: ' + error;
+
+      await detenerCamara();
+
+    }
+
+  });
+
+  botonCerrar.addEventListener('click', detenerCamara);
+
+  window.addEventListener('beforeunload', function() {
+    if (camaraActiva && lector) {
+      lector.stop().catch(function() {});
+    }
+  });
+</script>
+
+</body>
+</html>
